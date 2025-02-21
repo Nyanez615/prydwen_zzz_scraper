@@ -1,0 +1,48 @@
+name: Scheduled Scraper
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+
+jobs:
+  run-scraper:
+    runs-on: ubuntu-latest
+
+    env:
+      BROWSER: "chromium"
+      SCRAPE_URL: "https://www.prydwen.gg/star-rail/characters/"
+      SCRAPE_LIMIT: None
+      # If sensitive, store in secrets instead
+      DB_URL: "sqlite:///hsr.db"
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run scraper
+        run: |
+          python -m scraper.main
+
+      - name: Upload DB artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: hsr-db
+          path: hsr.db
+
+      - name: Upload CSV & JSON
+        uses: actions/upload-artifact@v2
+        with:
+          name: characters
+          path: |
+            data_exports/*.csv
+            data_exports/*.json
+        
