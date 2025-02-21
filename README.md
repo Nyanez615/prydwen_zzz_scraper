@@ -1,6 +1,6 @@
-# Prydwen Zenless Zone Zero
+# Prydwen Zenless Zone Zero (ZZZ) Scraper
 
-A Python-based scraper for [Prydwen.gg](https://www.prydwen.gg/zenless/characters) to collect Zenless Zone Zero agent data, including **name**, **rank**, **attribute**, **specialty**, **faction**, and endgame mode **ratings**.
+A Python-based scraper for [Prydwen.gg](https://www.prydwen.gg/zenless/characters) to collect ZZZ agent data, including **name**, **rank**, **attribute**, **specialty**, **faction**, and endgame mode **ratings**.
 
 ## Features
 
@@ -11,14 +11,13 @@ A Python-based scraper for [Prydwen.gg](https://www.prydwen.gg/zenless/character
 - **Logging** via Python's `logging` module
 - GitHub Actions: 
   - **CI** for tests  
-  - **Scheduled** daily run that uploads the latest `zzz.db` artifact
 
 ## Installation
 
 1. **Clone** this repository:
    
    ```bash
-   git clone https://github.com/YourUsername/prydwen_zzz_scraper.git
+   git clone https://github.com/Nyanez615/prydwen_zzz_scraper.git
    cd prydwen_zzz_scraper
    ```
 
@@ -92,11 +91,6 @@ A Python-based scraper for [Prydwen.gg](https://www.prydwen.gg/zenless/character
   - name: Set PYTHONPATH
     un: echo "PYTHONPATH=$GITHUB_WORKSPACE" >> $GITHUB_ENV
   ```
-  
-### Scheduled Scraper (Optional): 
-
-- You can create a `.github/workflows/schedule.yml` that runs the scraper daily, then uploads artifacts or the DB. 
-- Runs daily at 2 AM UTC, executes `python -m scraper.main`, and uploads `zzz.db`, `agents.json`, and `agents.csv` as artifacts.
 
 ## Additional Configuration
 
