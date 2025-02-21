@@ -14,9 +14,9 @@ jobs:
 
     env:
       BROWSER: "chromium"
-      SCRAPE_URL: "https://www.prydwen.gg/star-rail/characters/"
+      SCRAPE_URL: "https://www.prydwen.gg/zenless/characters"
       SCRAPE_LIMIT: ""
-      DB_URL: "sqlite:///hsr.db"
+      DB_URL: "sqlite:///zzz.db"
 
     steps:
       - uses: actions/checkout@v2

@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from scraper.models import Base
 
-DB_URL = os.environ.get("DB_URL", "sqlite:///hsr.db")
+DB_URL = os.environ.get("DB_URL", "sqlite:///zzz.db")
 engine = create_engine(DB_URL, echo=False)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

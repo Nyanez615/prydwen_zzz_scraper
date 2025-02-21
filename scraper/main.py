@@ -19,7 +19,7 @@ from bs4 import BeautifulSoup
 from sqlalchemy.exc import IntegrityError
 
 from scraper.db import SessionLocal, init_db
-from scraper.models import Character
+from scraper.models import Agent
 from scraper.config import CHROME_OPTIONS, CHROMIUM_OPTIONS, FIREFOX_OPTIONS
 
 from dotenv import load_dotenv
@@ -88,47 +88,46 @@ def parse_rating(rating_str):
         logger.debug(f"Could not parse rating: {rating_str}")
         return None
 
-def scrape_star_rail_characters():
+def scrape_zzz_agents():
     """
-    Scrapes Star Rail character data from an environment-defined URL or default.
+    Scrapes ZZZ agent data from an environment-defined URL or default.
     Returns a list of dicts containing scraped character data.
     """
-    url = os.environ.get('SCRAPE_URL', 'https://www.prydwen.gg/star-rail/characters/')
-    # If SCRAPE_LIMIT is None or empty, no limit
-    limit = os.environ.get('SCRAPE_LIMIT', None)
-    
-    if limit == "None":
+    url = os.environ.get('SCRAPE_URL', 'https://www.prydwen.gg/zenless/characters/')
+    limit_str = os.environ.get('SCRAPE_LIMIT', None)
+
+    if limit_str == "None" or not limit_str:
         limit = None
-    elif limit is not None:
+    else:
         try:
-            limit = int(limit)
+            limit = int(limit_str)
         except ValueError:
-            logger.error(f"Invalid SCRAPE_LIMIT value: {limit}. It must be an integer or None.")
+            logger.error(f"Invalid SCRAPE_LIMIT value: {limit_str}. Must be int or None.")
             limit = None
 
     driver = get_driver()
 
-    characters = []
+    agents = []
     logger.info(f"Scraping from URL: {url}; limit={limit or 'No Limit'}")
 
     try:
         driver.get(url)
 
-        # Wait until the avatar cards to appear
+        # Wait until the avatar cards appear
         WebDriverWait(driver, 10).until(
             EC.presence_of_all_elements_located((By.CLASS_NAME, "avatar-card"))
         )
         character_cards = driver.find_elements(By.CLASS_NAME, "avatar-card")
 
         actions = ActionChains(driver)
-        possible_roles = ['Amplifier', 'Support DPS', 'Sustain', 'DPS']
+        possible_roles = ['DPS', 'Stun', 'Support']
 
         # If limit is not None, slice the list
         if limit is not None:
             character_cards = character_cards[:limit]
 
-        # After page load:
-        time.sleep(2)  # Let Tippy fully initialize
+        # Let Tippy fully initialize
+        time.sleep(2)
 
         for card in character_cards:
             # Scroll into view
@@ -151,23 +150,24 @@ def scrape_star_rail_characters():
                 popover_content = driver.find_element(By.CLASS_NAME, "tippy-content")
                 soup = BeautifulSoup(popover_content.get_attribute('innerHTML'), 'html.parser')
                 images = soup.find_all('img')
-                if len(images) < 8:
-                    logger.debug("Not enough <img> tags in popover.")
-                    continue
 
-                name = images[1]['alt']
-                element = images[4]['alt']
-                path = images[7]['alt']
+                # Guard against missing images
+                # name=images[1], attribute=7, specialty=10, faction=13 
+                # but these indexes may not exist for new/placeholder characters
+                name = images[1]['alt'] if len(images) > 1 else "Unknown"
+                attribute = images[7]['alt'] if len(images) > 7 else "Unknown"
+                specialty = images[10]['alt'] if len(images) > 10 else "Unknown"
+                faction = images[13]['alt'] if len(images) > 13 else "Unknown"
 
-                # Rarity
-                if soup.find(class_='rar-5'):
-                    rarity = '5★'
-                elif soup.find(class_='rar-4'):
-                    rarity = '4★'
+                # Rank
+                if soup.find(class_='rar-A'):
+                    rank = 'A'
+                elif soup.find(class_='rar-S'):
+                    rank = 'S'
                 else:
-                    rarity = 'Unknown'
+                    rank = 'Unknown'
 
-                # Role
+                # Determine role from text
                 text_content = soup.get_text(separator=' ')
                 role = 'Unknown'
                 for r in possible_roles:
@@ -175,41 +175,41 @@ def scrape_star_rail_characters():
                         role = r
                         break
 
-                # Ratings
+                # Now handle rating divs
                 rating_divs = soup.find_all('div', class_=re.compile(r'rating-hsr-\d+'))
-                moc_str, pf_str, as_str = 'N/A', 'N/A', 'N/A'
 
-                if rating_divs:
-                    if rarity == '5★' and len(rating_divs) >= 3:
-                        moc_str = rating_divs[0].get_text(strip=True)
-                        pf_str = rating_divs[1].get_text(strip=True)
-                        as_str = rating_divs[2].get_text(strip=True)
-                    elif rarity == '4★' and len(rating_divs) >= 6:
-                        moc_str = rating_divs[3].get_text(strip=True)
-                        pf_str = rating_divs[4].get_text(strip=True)
-                        as_str = rating_divs[5].get_text(strip=True)
+                # Defaults if no rating found
+                sd_str = 'N/A'
+                da_str = 'N/A'
+
+                # If there's at least one rating, assume it's SD
+                if len(rating_divs) > 0:
+                    sd_str = rating_divs[0].get_text(strip=True)
+
+                # If there's a second rating, assume it's DA
+                if len(rating_divs) > 1:
+                    da_str = rating_divs[1].get_text(strip=True)
 
                 # Convert to floats
-                moc_val = parse_rating(moc_str)
-                pf_val = parse_rating(pf_str)
-                as_val = parse_rating(as_str)
+                sd_val = parse_rating(sd_str)
+                da_val = parse_rating(da_str)
 
-                numeric_ratings = [r for r in (moc_val, pf_val, as_val) if r is not None]
+                numeric_ratings = [r for r in (sd_val, da_val) if r is not None]
                 if numeric_ratings:
                     avg_rating = round(sum(numeric_ratings) / len(numeric_ratings), 2)
                 else:
                     avg_rating = None
 
-                characters.append({
+                agents.append({
                     'name': name,
-                    'element': element,
-                    'path': path,
-                    'rarity': rarity,
+                    'rank': rank,
+                    'attribute': attribute,
+                    'specialty': specialty,
+                    'faction': faction,
                     'role': role,
-                    'moc_rating': moc_val,
-                    'pf_rating': pf_val,
-                    'as_rating': as_val,
-                    'average_rating': avg_rating,
+                    'sd_rating': sd_val,
+                    'da_rating': da_val,
+                    'average_rating': avg_rating
                 })
 
                 logger.info(f"Scraped: {name} (avg_rating={avg_rating})")
@@ -220,28 +220,25 @@ def scrape_star_rail_characters():
     finally:
         driver.quit()
 
-    return characters
+    return agents
 
-def save_characters_to_db(characters):
+def save_agents_to_db(agents):
     """
-    Persists scraped character data into the database.
-    If a character already exists, update its ratings (and average) if changed.
+    Persists scraped agent data into the database.
+    If an agent already exists, update its ratings (and average) if changed.
     """
     db = SessionLocal()
     try:
-        for data in characters:
-            existing = db.query(Character).filter_by(name=data['name']).first()
+        for data in agents:
+            existing = db.query(Agent).filter_by(name=data['name']).first()
             if existing:
                 # Check if the new ratings differ
                 updated = False
-                if existing.moc_rating != data['moc_rating']:
-                    existing.moc_rating = data['moc_rating']
+                if existing.sd_rating != data['sd_rating']:
+                    existing.sd_rating = data['sd_rating']
                     updated = True
-                if existing.pf_rating != data['pf_rating']:
-                    existing.pf_rating = data['pf_rating']
-                    updated = True
-                if existing.as_rating != data['as_rating']:
-                    existing.as_rating = data['as_rating']
+                if existing.da_rating != data['da_rating']:
+                    existing.da_rating = data['da_rating']
                     updated = True
                 if existing.average_rating != data['average_rating']:
                     existing.average_rating = data['average_rating']
@@ -253,50 +250,51 @@ def save_characters_to_db(characters):
                 else:
                     logger.info(f"No rating changes for {existing.name}, skipping update.")
             else:
-                # New character
-                char = Character(
+                # New agent
+                ag = Agent(
                     name=data['name'],
-                    element=data['element'],
-                    path=data['path'],
-                    rarity=data['rarity'],
+                    rank=data['rank'],
+                    attribute=data['attribute'],
+                    specialty=data['specialty'],
+                    faction=data['faction'],
                     role=data['role'],
-                    moc_rating=data['moc_rating'],
-                    pf_rating=data['pf_rating'],
-                    as_rating=data['as_rating'],
+                    sd_rating=data['sd_rating'],
+                    da_rating=data['da_rating'],
                     average_rating=data['average_rating']
                 )
-                db.add(char)
+
+                db.add(ag)
                 try:
                     db.commit()
-                    logger.info(f"Saved {char.name} to DB.")
+                    logger.info(f"Saved {ag.name} to DB.")
                 except IntegrityError:
                     db.rollback()
-                    logger.warning(f"Character '{char.name}' caused IntegrityError, skipping...")
+                    logger.warning(f"Agent '{ag.name}' caused IntegrityError, skipping...")
 
     finally:
         db.close()
 
-def get_characters():
+def get_agents():
     db = SessionLocal()
     try:
-        all_chars = db.query(Character).all()
-        return all_chars
+        all_agents = db.query(Agent).all()
+        return all_agents
     finally:
         db.close()
 
-def export_characters_json(characters, filename="characters_export.json"):
+def export_agents_json(agents, filename="agents_export.json"):
     data = []
-    for char in characters:
+    for ag in agents:
         data.append({
-            "name": char.name,
-            "element": char.element,
-            "path": char.path,
-            "rarity": char.rarity,
-            "role": char.role,
-            "moc_rating": char.moc_rating,
-            "pf_rating": char.pf_rating,
-            "as_rating": char.as_rating,
-            "average_rating": char.average_rating
+            "name": ag.name,
+            "rank": ag.rank,
+            "attribute": ag.attribute,
+            "specialty": ag.specialty,
+            "faction": ag.faction,
+            "role": ag.role,
+            "sd_rating": ag.sd_rating,
+            "da_rating": ag.da_rating,
+            "average_rating": ag.average_rating
         })
 
     os.makedirs("data_exports", exist_ok=True)
@@ -305,27 +303,27 @@ def export_characters_json(characters, filename="characters_export.json"):
 
     print(f"Exported {len(data)} records to {filename} successfully!")
 
-def export_characters_csv(characters, filename="characters_export.csv"):
+def export_agents_csv(agents, filename="agents_export.csv"):
     os.makedirs("data_exports", exist_ok=True)
     with open(os.path.join("data_exports", filename), "w", newline='', encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow([
-            "name", "element", "path", "rarity", "role",
-            "moc_rating", "pf_rating", "as_rating", "average_rating"
+            "name", "rank", "attribute", "specialty", "faction", "role",
+            "sd_rating", "da_rating", "average_rating"
         ])
-        for char in characters:
+        for ag in agents:
             writer.writerow([
-                char.name,
-                char.element,
-                char.path,
-                char.rarity,
-                char.role,
-                char.moc_rating,
-                char.pf_rating,
-                char.as_rating,
-                char.average_rating
+                ag.name,
+                ag.rank,
+                ag.attribute,
+                ag.specialty,
+                ag.faction,
+                ag.role,
+                ag.sd_rating,
+                ag.da_rating,
+                ag.average_rating
             ])
-    print(f"Exported {len(characters)} records to {filename} successfully!")
+    print(f"Exported {len(agents)} records to {filename} successfully!")
 
 def main():
     # Initialize/ensure DB structure
@@ -333,19 +331,19 @@ def main():
     logger.info("Database initialized.")
 
     # Scrape
-    characters = scrape_star_rail_characters()
-    if characters:
-        save_characters_to_db(characters)
-        logger.info("All characters saved or updated in DB.")
+    agents = scrape_zzz_agents()
+    if agents:
+        save_agents_to_db(agents)
+        logger.info("All agents saved or updated in DB.")
 
     logger.info("Scraping process completed.")
 
-    # Query all characters in DB
-    all_chars = get_characters()
+    # Query all agents in DB
+    all_agents = get_agents()
 
     # Export
-    export_characters_json(all_chars, "characters.json")
-    export_characters_csv(all_chars, "characters.csv")
+    export_agents_json(all_agents, "agents.json")
+    export_agents_csv(all_agents, "agents.csv")
 
 if __name__ == "__main__":
     main()

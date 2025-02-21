@@ -169,8 +169,8 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-hsr.db
-.hsr.db
+zzz.db
+.zzz.db
 vscode/
 .vscode/
 data_exports/
